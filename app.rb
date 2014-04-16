@@ -3,7 +3,6 @@ require 'set'
 require 'pry'
 
 # NOTE:
-# pass input_cacher.snapshot down through system updates
 # timer "callbacks"?
 #   - since timers are SO simple, does it make sense to have:
 #   ChangeColorEverySoOftenSystem? ColorChangingSystem
@@ -41,6 +40,12 @@ class EntityManager
     self
   end
 
+  def remove_component(component, opts={})
+    target_entity = opts[:from]
+    @component_store[component.class].delete(target_entity)
+    self
+  end
+
   def remove_entity(entity)
     @component_store[component.class].delete(target_entity)
     self
@@ -66,8 +71,25 @@ class ControlComponent
   attr_accessor :move_left
 end
 
+class ColorShiftSystem
+  def update(entity_manager, dt, input)
+    entity_manager.entities_with_all_components TimerComponent, ColorComponent do |timer, color, ent_id|
+      timer.ttl -= dt
+      if timer.ttl < 0
+        if timer.repeat
+          timer.ttl = timer.total
+        else
+          entity_manager.remove_component(timer, from: ent_id)
+        end
+      end
+      c = color.color
+      color.color = Gosu::Color.rgba(c.red, c.green, c.blue, 255 * (timer.ttl / timer.total))
+    end
+  end
+end
+
 class MovementSystem
-  def update(entity_manager, dt)
+  def update(entity_manager, dt, input)
     entity_manager.entities_with_all_components PositionComponent, ControlComponent do |pos, control, ent_id|
       pos.x += dt/10 if control.move_right
       pos.x -= dt/10 if control.move_left
@@ -76,26 +98,27 @@ class MovementSystem
 end
 
 class TimerComponent
-  attr_accessor :ttl, :loop
+  attr_accessor :ttl, :repeat, :total
+  def initialize(ttl, repeat)
+    @total = ttl
+    @ttl = ttl
+    @repeat = repeat
+  end
 end
 
 class TimerSystem
-  def update(entity_manager, dt)
+  def update(entity_manager, dt, input)
     entity_manager.entities_with_all_components TimerComponent do |timer, ent_id|
     end
   end
 end
 
 class InputMappingSystem
-  def initialize(input_cacher)
-    @input = input_cacher
-  end
-
-  def update(entity_manager, dt)
-    exit if @input.down?(Gosu::KbEscape)
+  def update(entity_manager, dt, input)
+    exit if input.down?(Gosu::KbEscape)
     entity_manager.entities_with_all_components ControlComponent do |control, ent_id|
-      control.move_left = @input.down?(Gosu::KbLeft)
-      control.move_right = @input.down?(Gosu::KbRight)
+      control.move_left = input.down?(Gosu::KbLeft)
+      control.move_right = input.down?(Gosu::KbRight)
     end
   end
 end
@@ -139,12 +162,16 @@ class MyGame < Gosu::Window
     @entity_manager.add_component @entity_control, to: entity
     @entity_manager.add_component PositionComponent.new(1,2), to: entity
     @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: entity
-    @input_mapping_system = InputMappingSystem.new @input_cacher
+    @entity_manager.add_component TimerComponent.new(1_000, true), to: entity
+
+    @input_mapping_system = InputMappingSystem.new
     @movement_system = MovementSystem.new
+    @color_shift_system = ColorShiftSystem.new
     @render_system = RenderSystem.new
     @update_systems = [
       @input_mapping_system,
       @movement_system,
+      @color_shift_system,
     ]
     @draw_systems = [ @render_system ]
   end
@@ -158,10 +185,9 @@ class MyGame < Gosu::Window
       delta -= @last_millis if millis > @last_millis
       delta = MAX_UPDATE_SIZE_IN_MILLIS if delta > MAX_UPDATE_SIZE_IN_MILLIS
 
-      # puts "update #{delta}"
+      input_snapshot = @input_cacher.snapshot
+      @update_systems.each { |sys| sys.update(@entity_manager, delta, input_snapshot) }
     end
-
-    @update_systems.each { |sys| sys.update(@entity_manager, delta) }
 
     @last_millis = millis
   end
@@ -183,8 +209,8 @@ end
 class InputCacher
   attr_reader :down_ids
 
-  def initialize
-    @down_ids = Set.new
+  def initialize(down_ids = nil)
+    @down_ids = down_ids || Set.new
   end
 
   def button_down(id)
@@ -197,6 +223,10 @@ class InputCacher
 
   def down?(id)
     @down_ids.include? id
+  end
+
+  def snapshot
+    InputCacher.new(@down_ids.dup)
   end
 end
 
