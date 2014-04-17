@@ -1,15 +1,20 @@
 require 'gosu'
+require 'awesome_print'
 require 'set'
 require 'pry'
 
 # NOTE:
-# timer "callbacks"?
-#   - since timers are SO simple, does it make sense to have:
-#   ChangeColorEverySoOftenSystem? ColorChangingSystem
 # control component for this player vs AI player? tags?
-# some sort of "events"
+# animations?
+# control other dot with different keys
+# collisions: http://forums.xkcd.com/viewtopic.php?f=11&t=81459
+# ent A hurts ent B:
+#   http://gamedev.stackexchange.com/questions/1119/entity-communication-message-queue-vs-publish-subscribe-vs-signal-slots
+# hook up to sim-sim
 
 class EntityManager
+  attr_reader :component_store
+
   def create
     # TODO will probably need an Entity class for convenience
     @count += 1
@@ -19,6 +24,24 @@ class EntityManager
   def initialize
     @count = 0
     @component_store = Hash.new{|h, k| h[k] = Hash.new{|hh, kk| hh[kk] = Set.new}}
+    @events = {}
+  end
+
+  def emit_event(event, opts={})
+    target_entity = opts[:on]
+    @events[target_entity] ||= []
+    @events[target_entity] << event
+
+    add_component(event, to: target_entity)
+  end
+
+  def clear_events
+    @events.each do |entity, events|
+      events.each do |event|
+        remove_component(event, from: entity)
+      end
+    end
+    @events.clear
   end
 
   def entities_with_all_components(*components, &block)
@@ -70,18 +93,41 @@ class ControlComponent
   attr_accessor :move_right
   attr_accessor :move_left
 end
+class KeyboardControlComponent
+  attr_accessor :move_right
+  attr_accessor :move_left
+
+  def initialize(opts={})
+    @move_right, @move_left = opts.values_at(:move_right, :move_left)
+  end
+end
+
+class SpeedComponent
+  attr_accessor :speed
+  def initialize(speed)
+    @speed = speed
+  end
+end
+
+class BeepEvent
+end
+
+class BeepingSystem
+  def initialize(window)
+    # @beep = Gosu::Sample.new(window, 'beep.wav')
+  end
+
+  def update(entity_manager, dt, input)
+    entity_manager.entities_with_all_components BeepEvent do |beep, ent_id|
+      # puts "BEEP: #{ent_id}"
+      # @beep.play
+    end
+  end
+end
 
 class ColorShiftSystem
   def update(entity_manager, dt, input)
     entity_manager.entities_with_all_components TimerComponent, ColorComponent do |timer, color, ent_id|
-      timer.ttl -= dt
-      if timer.ttl < 0
-        if timer.repeat
-          timer.ttl = timer.total
-        else
-          entity_manager.remove_component(timer, from: ent_id)
-        end
-      end
       c = color.color
       color.color = Gosu::Color.rgba(c.red, c.green, c.blue, 255 * (timer.ttl / timer.total))
     end
@@ -90,25 +136,35 @@ end
 
 class MovementSystem
   def update(entity_manager, dt, input)
-    entity_manager.entities_with_all_components PositionComponent, ControlComponent do |pos, control, ent_id|
-      pos.x += dt/10 if control.move_right
-      pos.x -= dt/10 if control.move_left
+    entity_manager.entities_with_all_components PositionComponent, ControlComponent, SpeedComponent do |pos, control, speed, ent_id|
+      pos.x += dt*speed.speed if control.move_right
+      pos.x -= dt*speed.speed if control.move_left
     end
   end
 end
 
 class TimerComponent
-  attr_accessor :ttl, :repeat, :total
-  def initialize(ttl, repeat)
+  attr_accessor :ttl, :repeat, :total, :event
+  def initialize(ttl, repeat, event = nil)
     @total = ttl
     @ttl = ttl
     @repeat = repeat
+    @event = event
   end
 end
 
 class TimerSystem
   def update(entity_manager, dt, input)
     entity_manager.entities_with_all_components TimerComponent do |timer, ent_id|
+      timer.ttl -= dt
+      if timer.ttl < 0
+        entity_manager.emit_event timer.event, on: ent_id unless timer.event.nil?
+        if timer.repeat
+          timer.ttl = timer.total
+        else
+          entity_manager.remove_component(timer, from: ent_id)
+        end
+      end
     end
   end
 end
@@ -116,9 +172,9 @@ end
 class InputMappingSystem
   def update(entity_manager, dt, input)
     exit if input.down?(Gosu::KbEscape)
-    entity_manager.entities_with_all_components ControlComponent do |control, ent_id|
-      control.move_left = input.down?(Gosu::KbLeft)
-      control.move_right = input.down?(Gosu::KbRight)
+    entity_manager.entities_with_all_components KeyboardControlComponent, ControlComponent do |keys, control, ent_id|
+      control.move_left = input.down?(keys.move_left)
+      control.move_right = input.down?(keys.move_right)
     end
   end
 end
@@ -156,20 +212,38 @@ class MyGame < Gosu::Window
     #   color RED
     # end
 
+    dot = @entity_manager.create
+    @entity_manager.add_component KeyboardControlComponent.new(
+                                    move_right: Gosu::KbRight, 
+                                    move_left: Gosu::KbLeft), to: dot
+    @entity_manager.add_component ControlComponent.new, to: dot
+    @entity_manager.add_component SpeedComponent.new(0.1), to: dot
+    @entity_manager.add_component PositionComponent.new(1,2), to: dot
+    @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot
+    @entity_manager.add_component TimerComponent.new(1_000, true, BeepEvent.new), to: dot
 
-    entity = @entity_manager.create #:ball
-    @entity_control = ControlComponent.new
-    @entity_manager.add_component @entity_control, to: entity
-    @entity_manager.add_component PositionComponent.new(1,2), to: entity
-    @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: entity
-    @entity_manager.add_component TimerComponent.new(1_000, true), to: entity
+    500.times do
+      dot2 = @entity_manager.create
+      @entity_manager.add_component KeyboardControlComponent.new(
+                                      move_right: Gosu::KbD, 
+                                      move_left: Gosu::KbA), to: dot2
+      @entity_manager.add_component ControlComponent.new, to: dot2
+      @entity_manager.add_component SpeedComponent.new(rand), to: dot2
+      @entity_manager.add_component PositionComponent.new(rand(0..300),rand(0..200)), to: dot2
+      @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot2
+      @entity_manager.add_component TimerComponent.new(rand(200..2000), true, BeepEvent.new), to: dot2
+    end
 
     @input_mapping_system = InputMappingSystem.new
+    @timer_system = TimerSystem.new
+    @beeping_system = BeepingSystem.new(self)
     @movement_system = MovementSystem.new
     @color_shift_system = ColorShiftSystem.new
     @render_system = RenderSystem.new
     @update_systems = [
       @input_mapping_system,
+      @timer_system,
+      @beeping_system,
       @movement_system,
       @color_shift_system,
     ]
@@ -177,6 +251,8 @@ class MyGame < Gosu::Window
   end
 
   def update
+    self.caption = Gosu.fps
+
     millis = Gosu::milliseconds.to_f
 
     # ignore the first update
@@ -187,6 +263,8 @@ class MyGame < Gosu::Window
 
       input_snapshot = @input_cacher.snapshot
       @update_systems.each { |sys| sys.update(@entity_manager, delta, input_snapshot) }
+
+      @entity_manager.clear_events
     end
 
     @last_millis = millis
@@ -197,6 +275,9 @@ class MyGame < Gosu::Window
   end
 
   def button_down(id)
+    if id == Gosu::KbP
+      ap @entity_manager.component_store
+    end
     @input_cacher.button_down id
   end
 
