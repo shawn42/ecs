@@ -1,12 +1,12 @@
 class BeepingSystem
   def initialize(window)
-    # @beep = Gosu::Sample.new(window, 'beep.wav')
+    @beep = Gosu::Sample.new(window, 'beep.ogg')
   end
 
   def update(entity_manager, dt, input)
     entity_manager.entities_with_all_components BeepEvent do |beep, ent_id|
       # puts "BEEP: #{ent_id}"
-      # @beep.play
+      @beep.play
     end
   end
 end
@@ -25,6 +25,8 @@ class MovementSystem
     entity_manager.entities_with_all_components PositionComponent, ControlComponent, SpeedComponent do |pos, control, speed, ent_id|
       pos.x += dt*speed.speed if control.move_right
       pos.x -= dt*speed.speed if control.move_left
+      pos.y += dt*speed.speed if control.move_down
+      pos.y -= dt*speed.speed if control.move_up
     end
   end
 end
@@ -34,7 +36,7 @@ class TimerSystem
     entity_manager.entities_with_all_components TimerComponent do |timer, ent_id|
       timer.ttl -= dt
       if timer.ttl < 0
-        entity_manager.emit_event timer.event, on: ent_id unless timer.event.nil?
+        entity_manager.emit_event timer.event.new, on: ent_id unless timer.event.nil?
         if timer.repeat
           timer.ttl = timer.total
         else
@@ -51,6 +53,8 @@ class InputMappingSystem
     entity_manager.entities_with_all_components KeyboardControlComponent, ControlComponent do |keys, control, ent_id|
       control.move_left = input.down?(keys.move_left)
       control.move_right = input.down?(keys.move_right)
+      control.move_up = input.down?(keys.move_up)
+      control.move_down = input.down?(keys.move_down)
     end
   end
 end

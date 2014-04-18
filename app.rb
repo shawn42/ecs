@@ -9,6 +9,7 @@ require_relative 'entity_manager'
 require_relative 'input_cacher'
 
 # NOTE: TODO
+# add timer to dot for scale
 # control component for this player vs AI player? tags?
 # animations?
 # collisions: http://forums.xkcd.com/viewtopic.php?f=11&t=81459
@@ -34,24 +35,29 @@ class MyGame < Gosu::Window
 
     dot = @entity_manager.create
     @entity_manager.add_component KeyboardControlComponent.new(
+                                    move_up: Gosu::KbUp, 
+                                    move_down: Gosu::KbDown, 
                                     move_right: Gosu::KbRight, 
                                     move_left: Gosu::KbLeft), to: dot
     @entity_manager.add_component ControlComponent.new, to: dot
     @entity_manager.add_component SpeedComponent.new(0.1), to: dot
     @entity_manager.add_component PositionComponent.new(1,2), to: dot
     @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot
-    @entity_manager.add_component TimerComponent.new(1_000, true, BeepEvent.new), to: dot
+    @entity_manager.add_component TimerComponent.new(1_000, true, BeepEvent), to: dot
+    # @entity_manager.add_component TimerComponent.new(2_000, true), to: dot
 
     500.times do
       dot2 = @entity_manager.create
       @entity_manager.add_component KeyboardControlComponent.new(
+                                      move_up: Gosu::KbW, 
+                                      move_down: Gosu::KbS, 
                                       move_right: Gosu::KbD, 
                                       move_left: Gosu::KbA), to: dot2
       @entity_manager.add_component ControlComponent.new, to: dot2
       @entity_manager.add_component SpeedComponent.new(rand), to: dot2
       @entity_manager.add_component PositionComponent.new(rand(0..300),rand(0..200)), to: dot2
       @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot2
-      @entity_manager.add_component TimerComponent.new(rand(200..2000), true, BeepEvent.new), to: dot2
+      @entity_manager.add_component TimerComponent.new(rand(200..2000), true), to: dot2
     end
 
     @input_mapping_system = InputMappingSystem.new
@@ -60,14 +66,6 @@ class MyGame < Gosu::Window
     @movement_system = MovementSystem.new
     @color_shift_system = ColorShiftSystem.new
     @render_system = RenderSystem.new
-    @update_systems = [
-      @input_mapping_system,
-      @timer_system,
-      @beeping_system,
-      @movement_system,
-      @color_shift_system,
-    ]
-    @draw_systems = [ @render_system ]
   end
 
   def update
@@ -82,7 +80,11 @@ class MyGame < Gosu::Window
       delta = MAX_UPDATE_SIZE_IN_MILLIS if delta > MAX_UPDATE_SIZE_IN_MILLIS
 
       input_snapshot = @input_cacher.snapshot
-      @update_systems.each { |sys| sys.update(@entity_manager, delta, input_snapshot) }
+      @input_mapping_system.update @entity_manager, delta, input_snapshot
+      @timer_system.update @entity_manager, delta, input_snapshot
+      @beeping_system.update @entity_manager, delta, input_snapshot
+      @movement_system.update @entity_manager, delta, input_snapshot
+      @color_shift_system.update @entity_manager, delta, input_snapshot
 
       @entity_manager.clear_events
     end
@@ -91,7 +93,7 @@ class MyGame < Gosu::Window
   end
 
   def draw
-    @draw_systems.each { |sys| sys.draw(self, @entity_manager) }
+    @render_system.draw self, @entity_manager
   end
 
   def button_down(id)

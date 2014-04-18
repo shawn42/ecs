@@ -14,16 +14,14 @@ class PositionComponent
 end
 
 class ControlComponent
-  attr_accessor :move_right
-  attr_accessor :move_left
+  attr_accessor :move_right, :move_left, :move_up, :move_down
 end
 
 class KeyboardControlComponent
-  attr_accessor :move_right
-  attr_accessor :move_left
+  attr_accessor :move_right, :move_left, :move_up, :move_down
 
   def initialize(opts={})
-    @move_right, @move_left = opts.values_at(:move_right, :move_left)
+    @move_right, @move_left, @move_up, @move_down = opts.values_at(:move_right, :move_left, :move_up, :move_down)
   end
 end
 
