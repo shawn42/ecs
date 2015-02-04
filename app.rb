@@ -10,6 +10,8 @@ require_relative 'input_cacher'
 
 # NOTE: TODO
 # add timer to dot for scale
+# delay add/remove of ents and comps until end of 'tick'
+# query based on key/value pairs instead of component types
 # control component for this player vs AI player? tags?
 # animations?
 # collisions: http://forums.xkcd.com/viewtopic.php?f=11&t=81459
@@ -43,28 +45,54 @@ class MyGame < Gosu::Window
     @entity_manager.add_component SpeedComponent.new(0.1), to: dot
     @entity_manager.add_component PositionComponent.new(1,2), to: dot
     @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot
-    @entity_manager.add_component TimerComponent.new(1_000, true, BeepEvent), to: dot
-    # @entity_manager.add_component TimerComponent.new(2_000, true), to: dot
+    @entity_manager.add_component ScaleComponent.new(5), to: dot
 
-    500.times do
-      dot2 = @entity_manager.create
-      @entity_manager.add_component KeyboardControlComponent.new(
-                                      move_up: Gosu::KbW, 
-                                      move_down: Gosu::KbS, 
-                                      move_right: Gosu::KbD, 
-                                      move_left: Gosu::KbA), to: dot2
-      @entity_manager.add_component ControlComponent.new, to: dot2
-      @entity_manager.add_component SpeedComponent.new(rand), to: dot2
-      @entity_manager.add_component PositionComponent.new(rand(0..300),rand(0..200)), to: dot2
-      @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot2
-      @entity_manager.add_component TimerComponent.new(rand(200..2000), true), to: dot2
-    end
+    @entity_manager.add_component TimerComponent.new(:color, 1_000, true), to: dot
+    @entity_manager.add_component TimerComponent.new(:beeppp, 1_000, true, BeepEvent), to: dot
+    @entity_manager.add_component TimerComponent.new(:scale, 1_000, true), to: dot
+
+    dot2 = @entity_manager.create
+    @entity_manager.add_component KeyboardControlComponent.new(
+                                    move_up: Gosu::KbW, 
+                                    move_down: Gosu::KbS, 
+                                    move_right: Gosu::KbD, 
+                                    move_left: Gosu::KbA), to: dot2
+    @entity_manager.add_component ControlComponent.new, to: dot2
+    @entity_manager.add_component SpeedComponent.new(0.1), to: dot2
+    @entity_manager.add_component PositionComponent.new(100,2), to: dot2
+    @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot2
+    @entity_manager.add_component ScaleComponent.new(5), to: dot2
+
+    @entity_manager.add_component TimerComponent.new(:color, 1_000, true), to: dot2
+    @entity_manager.add_component TimerComponent.new(:beeppp, 1_000, true, BeepEvent), to: dot2
+    @entity_manager.add_component TimerComponent.new(:scale, 1_000, true), to: dot2
+
+    # 500.times do
+#     1.times do
+#       dot2 = @entity_manager.create
+#       @entity_manager.add_component KeyboardControlComponent.new(
+#                                       move_up: Gosu::KbW, 
+#                                       move_down: Gosu::KbS, 
+#                                       move_right: Gosu::KbD, 
+#                                       move_left: Gosu::KbA), to: dot2
+#       @entity_manager.add_component ControlComponent.new, to: dot2
+#       @entity_manager.add_component SpeedComponent.new(0.1), to: dot2
+#       @entity_manager.add_component PositionComponent.new(1,2), to: dot2
+#       @entity_manager.add_component ColorComponent.new(Gosu::Color::RED), to: dot2
+#       @entity_manager.add_component ScaleComponent.new(5), to: dot2
+#
+#       @entity_manager.add_component TimerComponent.new(:color, 1_000, true), to: dot2
+#       @entity_manager.add_component TimerComponent.new(:beeppp, 1_000, true, BeepEvent), to: dot2
+#       @entity_manager.add_component TimerComponent.new(:scale, 3_000, true), to: dot2
+#
+#     end
 
     @input_mapping_system = InputMappingSystem.new
     @timer_system = TimerSystem.new
     @beeping_system = BeepingSystem.new(self)
     @movement_system = MovementSystem.new
     @color_shift_system = ColorShiftSystem.new
+    @scale_system = ScaleSystem.new
     @render_system = RenderSystem.new
   end
 
@@ -85,6 +113,7 @@ class MyGame < Gosu::Window
       @beeping_system.update @entity_manager, delta, input_snapshot
       @movement_system.update @entity_manager, delta, input_snapshot
       @color_shift_system.update @entity_manager, delta, input_snapshot
+      @scale_system.update @entity_manager, delta, input_snapshot
 
       @entity_manager.clear_events
     end
